@@ -1,5 +1,6 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, time::SystemTime};
 
+use hyper::{client::HttpConnector, Body, Client, Uri};
 use petname::Petnames;
 use rand::{prelude::ThreadRng, rngs::SmallRng, Rng, SeedableRng};
 
@@ -65,12 +66,38 @@ struct Scrobble<'a> {
     track: &'a str,
 }
 
-fn main() {
-    let data = RandomData::new(50, 50, 12);
+impl<'a> Scrobble<'a> {
+    pub fn as_query(&self) -> String {
+        format!(
+            "/2.0?method=track.scrobble&artist={}&track={}&album={}&timestamp={}",
+            urlencoding::encode(self.artist),
+            urlencoding::encode(self.track),
+            urlencoding::encode(self.album),
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+        )
+    }
+}
 
-    for _ in 0..4 {
+#[tokio::main]
+async fn main() {
+    let data = RandomData::new(100000, 10000, 256);
+    let client: Client<HttpConnector, Body> = Client::builder().build_http();
+
+    for _ in 0..500000 {
         let scrob = data.random_scrobble();
+        let uri = Uri::builder()
+            .scheme("http")
+            .authority("localhost:52727")
+            .path_and_query(scrob.as_query())
+            .build()
+            .unwrap();
 
-        println!("{} on {} by {}", scrob.track, scrob.album, scrob.artist);
+        let mut resp = client.get(uri).await.unwrap();
+        /*let s = hyper::body::to_bytes(resp.body_mut()).await.unwrap();
+        let s = String::from_utf8_lossy(&s);
+        println!("{} {}", resp.status(), s);*/
     }
 }
